@@ -21,7 +21,7 @@ enum Color {
 /// the key must implement Ord trait(provides min,max.. methods)
 /// A pointer to the node can be created using `NodePtr::new()` method
 #[allow(dead_code)]
-pub struct Node<K: Ord, V> {
+pub struct Node<K: Ord, V: Clone> {
     key: K,
     value: V,
     left: NodePtr<K, V>,
@@ -37,10 +37,10 @@ pub struct Node<K: Ord, V> {
 */
 // We will use unsafe rust and a node store the  pointer to the left ,right and  parent node
 /// NodePtr is the abstraction over the pointer to the node
-// #[derive(Copy)]
-struct NodePtr<K: Ord, V>(*mut Node<K, V>);
+#[derive(Debug)]
+struct NodePtr<K: Ord, V:Clone>(*mut Node<K, V>);
 
-impl<K: Ord, V> NodePtr<K, V> {
+impl<K: Ord, V:Clone> NodePtr<K, V> {
     /// It allcoates a new node in the heap
     /// And saves the raw pointer to the node in the Node Pointer
     pub fn new(key: K, value: V) -> Self {
@@ -98,6 +98,16 @@ impl<K: Ord, V> NodePtr<K, V> {
         }
     }
 
+    /// set the node as root node
+    fn set_side_root(&mut self) {
+        if self.is_null() {
+            return;
+        }
+        unsafe {
+            (*self.0).side = Side::Root;
+        }
+    }
+
     fn set_color_red(&mut self) {
         if self.is_null() {
             return;
@@ -125,25 +135,34 @@ impl<K: Ord, V> NodePtr<K, V> {
     }
 
     /// Returns a copy of node's parent
-    fn get_parent(&self) -> NodePtr<K, V> {
+    pub fn get_parent(&self) -> NodePtr<K, V> {
         if self.is_null() {
             return NodePtr::null();
         }
         unsafe { (*self.0).parent.clone() }
     }
 
+    /// returns the value stored inside the node
+    #[allow(unused)]
+    pub fn get_value(&self) -> Option<V> {
+        if self.is_null() {
+            return None;
+        }
+        unsafe { Some((*self.0).value.clone()) }
+    }
+
     /// checks if this node's color is red
-    fn is_red(&self) -> bool {
+    pub fn is_red(&self) -> bool {
         unsafe { (*self.0).color == Color::Red }
     }
 
     /// checks if this node's color is black
-    fn is_black(&self) -> bool {
+    pub fn is_black(&self) -> bool {
         unsafe { (*self.0).color == Color::Black }
     }
 
     /// returns a copy of left child of the node
-    fn left(&self) -> NodePtr<K, V> {
+    pub fn left(&self) -> NodePtr<K, V> {
         if self.is_null() {
             return NodePtr::null();
         }
@@ -151,7 +170,7 @@ impl<K: Ord, V> NodePtr<K, V> {
     }
 
     /// returns a copy of right child of the node
-    fn right(&self) -> NodePtr<K, V> {
+    pub fn right(&self) -> NodePtr<K, V> {
         if self.is_null() {
             return NodePtr::null();
         }
@@ -159,59 +178,64 @@ impl<K: Ord, V> NodePtr<K, V> {
     }
 
     /// checks if this node locates in the left
-    fn is_left(&self) -> bool {
+    pub fn is_left(&self) -> bool {
         unsafe { (*self.0).side == Side::Left }
     }
 
     /// checks if this node locates in the right
-    fn is_right(&self) -> bool {
+    pub fn is_right(&self) -> bool {
         unsafe { (*self.0).side == Side::Right }
     }
 
-    fn is_null(&self) -> bool {
+    /// checks if this node is the root node
+    pub fn is_root(&self) -> bool {
+        unsafe { (*self.0).side == Side::Root }
+    }
+
+    pub fn is_null(&self) -> bool {
         self.0.is_null()
     }
 
-    fn null() -> NodePtr<K, V> {
+    pub fn null() -> NodePtr<K, V> {
         NodePtr(null_mut())
     }
 }
 
-impl<K: Ord, V> Clone for NodePtr<K, V> {
+impl<K: Ord, V:Clone> Clone for NodePtr<K, V> {
     fn clone(&self) -> NodePtr<K, V> {
         NodePtr(self.0)
     }
 }
-impl<K: Ord, V> Copy for NodePtr<K, V> {}
+impl<K: Ord, V:Clone> Copy for NodePtr<K, V> {}
 
 /// To implement Ord trait one must implement PartialOrd and Eq
 /// Implementations must be consistent with the PartialOrd
-impl<K: Ord, V> Ord for NodePtr<K, V> {
+impl<K: Ord, V:Clone> Ord for NodePtr<K, V> {
     fn cmp(&self, other: &NodePtr<K, V>) -> Ordering {
         unsafe { (*self.0).key.cmp(&(*other.0).key) }
     }
 }
 
-impl<K: Ord, V> PartialOrd for NodePtr<K, V> {
+impl<K: Ord, V:Clone> PartialOrd for NodePtr<K, V> {
     fn partial_cmp(&self, other: &NodePtr<K, V>) -> Option<Ordering> {
         unsafe { Some((*self.0).key.cmp(&(*other.0).key)) }
     }
 }
 /// To impelement Eq trait, typw must implement PartialEq
-impl<K: Ord, V> Eq for NodePtr<K, V> {}
+impl<K: Ord, V:Clone> Eq for NodePtr<K, V> {}
 
-impl<K: Ord, V> PartialEq for NodePtr<K, V> {
+impl<K: Ord, V:Clone> PartialEq for NodePtr<K, V> {
     fn eq(&self, other: &NodePtr<K, V>) -> bool {
         self.0 == other.0
     }
 }
 
-pub struct RedBlackTree<K: Ord, V> {
+pub struct RedBlackTree<K: Ord, V:Clone> {
     root: NodePtr<K, V>,
     size: u64,
 }
 
-impl<K: Ord, V> RedBlackTree<K, V> {
+impl<K: Ord, V:Clone> RedBlackTree<K, V> {
     /// It creates a new Red-Black tree
     pub fn new() -> Self {
         Self {
@@ -253,6 +277,14 @@ impl<K: Ord, V> RedBlackTree<K, V> {
         }
         return NodePtr::null();
     }
+    /// return true if node with key k is present
+    pub fn has_node(&self, k: &K) -> bool {
+        let node = self.find_node(k);
+        if node.is_null() {
+            return false;
+        }
+        true
+    }
     /// Safety: use only if you have checked the node is not present in the tree
     /// It insert the node in the right place
     /// Any inserted node is Red in Color
@@ -278,6 +310,8 @@ impl<K: Ord, V> RedBlackTree<K, V> {
         // root node
         if parent.is_null() {
             self.root = node;
+            node.set_color_black();     // because root is black
+            node.set_side_root();
         } else {
             node.set_parent(parent);
             node.set_color_red();
@@ -336,7 +370,9 @@ impl<K: Ord, V> RedBlackTree<K, V> {
 
             // else aunt is red, do color flip
             node.get_parent().set_color_black();
-            node.get_parent().get_parent().set_color_red();
+            if !node.get_parent().get_parent().is_root() {
+                node.get_parent().get_parent().set_color_red();             // Only if not root node,
+            }
 
             if !node.get_parent().get_parent().right().is_null() {
                 node.get_parent().get_parent().right().set_color_black()
@@ -350,8 +386,10 @@ impl<K: Ord, V> RedBlackTree<K, V> {
             }
 
             // else aunt is red, do color flip
-            node.get_parent().set_color_black();
-            node.get_parent().get_parent().set_color_red();
+            node.get_parent().get_parent().set_color_black();
+            if !node.get_parent().is_root() {
+                node.get_parent().get_parent().set_color_red();             // Only if not root node,
+            }
 
             if !node.get_parent().get_parent().left().is_null() {
                 node.get_parent().get_parent().left().set_color_black()
@@ -413,8 +451,10 @@ impl<K: Ord, V> RedBlackTree<K, V> {
             node.right().set_side_right();
         }
         // node was root node, assign root to parent
-        if node.get_parent().is_null() {
+        if node.is_root() {
             self.root = temp;
+            temp.set_side_root();
+
         } else {
             // set the parents node's left and right node accordingly
             if node.is_left() {
@@ -426,6 +466,7 @@ impl<K: Ord, V> RedBlackTree<K, V> {
             }
         }
         temp.set_parent(node.get_parent());
+        temp.set_left_child(node);
         node.set_parent(temp);
         node.set_side_left(); 
     }
@@ -440,8 +481,9 @@ impl<K: Ord, V> RedBlackTree<K, V> {
             node.left().set_side_left();
         }
         // node was root node, assign root to parent
-        if node.get_parent().is_null() {
+        if node.is_root() {
             self.root = temp;
+            temp.set_side_root();
         } else {
             // set the parents node's left and right node accordingly
             if node.is_left() {
@@ -453,6 +495,7 @@ impl<K: Ord, V> RedBlackTree<K, V> {
             }
         }
         temp.set_parent(node.get_parent());
+        temp.set_right_child(node);
         node.set_parent(temp);
         node.set_side_right(); 
 
@@ -469,3 +512,240 @@ impl<K: Ord, V> RedBlackTree<K, V> {
         self.left_rotate(node);
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+
+    use std::ptr::null_mut;
+
+    use crate::engine::mem_table::red_black_tree::red_black_tree::NodePtr;
+
+    use super::RedBlackTree;
+
+    #[test]
+    fn insert_nothing() {
+        let rb = RedBlackTree::<u8,u8>::new();
+        assert_eq!(rb.size,0);
+        assert_eq!(rb.root,NodePtr(null_mut()))
+    }
+
+    #[test]
+    fn insert_root() {
+        let mut rb = RedBlackTree::<u8,u8>::new();
+        rb.insert_or_replace(11, 16);
+
+        // check tree status
+        assert_eq!(rb.size,1);
+        assert_ne!(rb.root,NodePtr(null_mut()));
+        
+
+        // check root node status, all types in node
+        let x = rb.find_node(&11);
+        assert_eq!(x.get_value(),Some(16));
+        assert_eq!(x.left().is_null(), true);
+        assert_eq!(x.right().is_null(), true);
+        assert_eq!(x.get_parent().is_null(), true);
+        assert_eq!(x.is_root(),true);
+        assert_eq!(x.is_black(),true);
+    }
+
+    /*
+    *     11
+    *    /  \
+    *   8   14
+    */
+    #[test]
+    fn insert_root_left_right() {
+        let mut rb = RedBlackTree::<u8,u8>::new();
+        rb.insert_or_replace(11, 16);
+        rb.insert_or_replace(14, 19);
+        rb.insert_or_replace(8, 13);
+
+        // check tree status
+        assert_eq!(rb.size,3);
+        assert_ne!(rb.root,NodePtr(null_mut()));
+        
+
+        // check root node status, all types in node
+        let x = rb.find_node(&11);
+        let y = rb.find_node(&8);
+        let z = rb.find_node(&14);
+        assert_eq!(x.get_value(),Some(16));
+        assert_eq!(x.left(),y);
+        assert_eq!(x.right(),z);
+        assert_eq!(x.get_parent().is_null(), true);
+        assert_eq!(x.is_root(),true);
+        assert_eq!(x.is_black(),true);
+
+        // check left node status, all types in node
+        assert_eq!(y.get_value(),Some(13));
+        assert_eq!(y.left().is_null(),true);
+        assert_eq!(y.right().is_null(),true);
+        assert_eq!(y.get_parent(), x);
+        assert_eq!(y.is_left(),true);
+        assert_eq!(y.is_red(),true);
+
+        // check right node status, all types in node
+        assert_eq!(z.get_value(),Some(19));
+        assert_eq!(z.left().is_null(),true);
+        assert_eq!(z.right().is_null(),true);
+        assert_eq!(z.get_parent(), x);
+        assert_eq!(z.is_right(),true);
+        assert_eq!(z.is_red(),true);
+    }
+
+
+    /*
+    *           11 B
+    *          /  \
+    *       R 8   14 R
+    *        /
+    *     R 7 -> new insert,Red aunt 
+    *           POST
+    *           11 B
+    *          /  \
+    *       B 8   14 B
+    *        /
+    *     R 7 -> new insert,Red aunt 
+    */
+    #[test]
+    fn check_color_flip() {
+        let mut rb = RedBlackTree::<u8,u8>::new();
+        rb.insert_or_replace(11, 16);
+        rb.insert_or_replace(14, 19);
+        rb.insert_or_replace(8, 13);
+        rb.insert_or_replace(7, 12);
+
+        // check tree status
+        assert_eq!(rb.size,4);
+        assert_ne!(rb.root,NodePtr(null_mut()));
+        
+
+        // check root node status
+        let x = rb.find_node(&11);
+        let y = rb.find_node(&8);
+        let z = rb.find_node(&14);
+        let w = rb.find_node(&7);
+        
+        assert_eq!(x.get_value(),Some(16));
+        assert_eq!(x.left(),y);
+        assert_eq!(x.right(),z);
+        assert_eq!(x.get_parent().is_null(), true);
+        assert_eq!(x.is_root(),true);
+        assert_eq!(x.is_black(),true);
+
+        // check left node status
+        assert_eq!(y.get_value(),Some(13));
+        assert_eq!(y.left(),w);
+        assert_eq!(y.right().is_null(),true);
+        assert_eq!(y.get_parent(), x);
+        assert_eq!(y.is_left(),true);
+        assert_eq!(y.is_black(),true);
+
+        // check right node status
+        assert_eq!(z.get_value(),Some(19));
+        assert_eq!(z.left().is_null(),true);
+        assert_eq!(z.right().is_null(),true);
+        assert_eq!(z.get_parent(), x);
+        assert_eq!(z.is_right(),true);
+        assert_eq!(z.is_black(),true);
+
+        // check new inserted node status
+        assert_eq!(w.get_value(),Some(12));
+        assert_eq!(w.left().is_null(),true);
+        assert_eq!(w.right().is_null(),true);
+        assert_eq!(w.get_parent(), y);
+        assert_eq!(w.is_left(),true);
+        assert_eq!(w.is_red(),true);
+    }
+    /*
+    *           11 B
+    *          /  \
+    *       B 8   14 B
+    *        /
+    *     R 7 
+    *      /
+    *   R 6 -> new insert
+    *       POST
+    *           11 B
+    *          /  \
+    *       B 7   14 B
+    *        / \
+    *     R 6   8 R
+    */
+    #[test]
+    fn check_right_rotate() {
+        let mut rb = RedBlackTree::<u8,u8>::new();
+        rb.insert_or_replace(11, 16);
+        rb.insert_or_replace(14, 19);
+        rb.insert_or_replace(8, 13);
+        rb.insert_or_replace(7, 12);
+        rb.insert_or_replace(6, 11);
+
+        // check tree status
+        assert_eq!(rb.size,5);
+        assert_ne!(rb.root,NodePtr(null_mut()));
+        
+
+        // check root node status
+        let root = rb.find_node(&11);
+        let l = rb.find_node(&7);
+        let r = rb.find_node(&14);
+        let ll = rb.find_node(&6);
+        let lr = rb.find_node(&8);
+        
+        assert_eq!(rb.has_node(&11),true);
+        assert_eq!(rb.has_node(&7),true);
+        assert_eq!(rb.has_node(&14),true);
+        assert_eq!(rb.has_node(&6),true);
+        assert_eq!(rb.has_node(&8),true);
+        
+        assert_eq!(root.get_value(),Some(16));
+        assert_eq!(root.left(),l);
+        assert_eq!(root.right(),r);
+        assert_eq!(root.get_parent().is_null(), true);
+        assert_eq!(root.is_root(),true);
+        assert_eq!(root.is_black(),true);
+
+        // check left node status
+        assert_eq!(l.get_value(),Some(12));
+        assert_eq!(l.left(),ll);
+        assert_eq!(l.right(),lr);
+        assert_eq!(l.get_parent(), root);
+        assert_eq!(l.is_left(),true);
+        assert_eq!(l.is_black(),true);
+
+        // // check right node status
+        assert_eq!(r.get_value(),Some(19));
+        assert_eq!(r.left().is_null(),true);
+        assert_eq!(r.right().is_null(),true);
+        assert_eq!(r.get_parent(), root);
+        assert_eq!(r.is_right(),true);
+        assert_eq!(r.is_black(),true);
+
+        // // check new inserted node status
+        assert_eq!(ll.get_value(),Some(11));
+        assert_eq!(ll.left().is_null(),true);
+        assert_eq!(ll.right().is_null(),true);
+        assert_eq!(ll.get_parent(), l);
+        assert_eq!(ll.is_left(),true);
+        assert_eq!(ll.is_red(),true);
+
+        // check parent which get pulled in the right side
+        assert_eq!(lr.get_value(),Some(13));
+        assert_eq!(lr.left().is_null(),true);
+        assert_eq!(lr.right().is_null(),true);
+        assert_eq!(lr.get_parent(), l);
+        assert_eq!(lr.is_right(),true);
+        assert_eq!(lr.is_red(),true);
+    }
+}
+
+// key: K,
+// value: V,
+// left: NodePtr<K, V>,
+// right: NodePtr<K, V>,
+// parent: NodePtr<K, V>,
+// side: Side,
+// color: Color,
