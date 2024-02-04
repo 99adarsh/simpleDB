@@ -5,17 +5,26 @@ use std::ops::Add;
 use std::ptr::null_mut;
 
 #[derive(PartialEq)]
-enum Side {
+pub enum Side {
     Left,
     Right,
     Root,
 }
 
 #[derive(PartialEq)]
-enum Color {
+pub enum Color {
     Black,
     Red,
 }
+
+/// TombStone: value to track delete keys
+#[allow(dead_code)]
+#[derive(PartialEq)]
+pub enum Status {
+    Available,
+    Deleted
+}
+
 /// Node contains <key,value>,
 /// for using the node in Binary search tree,
 /// the key must implement Ord trait(provides min,max.. methods)
@@ -24,6 +33,8 @@ enum Color {
 pub struct Node<K: Ord, V: Clone> {
     key: K,
     value: V,
+    timestamp: u128,
+    status: Status,
     left: NodePtr<K, V>,
     right: NodePtr<K, V>,
     parent: NodePtr<K, V>,
@@ -38,15 +49,17 @@ pub struct Node<K: Ord, V: Clone> {
 // We will use unsafe rust and a node store the  pointer to the left ,right and  parent node
 /// NodePtr is the abstraction over the pointer to the node
 #[derive(Debug)]
-struct NodePtr<K: Ord, V:Clone>(*mut Node<K, V>);
+pub struct NodePtr<K: Ord, V:Clone>(*mut Node<K, V>);
 
 impl<K: Ord, V:Clone> NodePtr<K, V> {
     /// It allcoates a new node in the heap
     /// And saves the raw pointer to the node in the Node Pointer
-    pub fn new(key: K, value: V) -> Self {
+    pub fn new(key: K, value: V, timestamp: u128,status: Status) -> Self {
         let new_node = Node {
             key,
             value,
+            timestamp,
+            status: status,
             left: NodePtr::null(),
             right: NodePtr::null(),
             parent: NodePtr::null(),
@@ -57,7 +70,7 @@ impl<K: Ord, V:Clone> NodePtr<K, V> {
     }
 
     /// sets the right child of the node
-    fn set_right_child(&mut self, node: NodePtr<K, V>) {
+    pub fn set_right_child(&mut self, node: NodePtr<K, V>) {
         if self.is_null() {
             return;
         }
@@ -133,6 +146,19 @@ impl<K: Ord, V:Clone> NodePtr<K, V> {
             (*self.0).parent = parent;
         }
     }
+    /// set the node status as deleted
+    /// updates timestamp
+    /// Cannot change the value to None or some min value
+    /// for optimisation, V does't impl default
+    fn set_deleted(&mut self, timestamp: u128) {
+        if self.is_null() {
+            return;
+        }
+        unsafe {
+            (*self.0).status = Status::Deleted;
+            (*self.0).timestamp = timestamp;
+        }
+    }
 
     /// Returns a copy of node's parent
     pub fn get_parent(&self) -> NodePtr<K, V> {
@@ -187,6 +213,11 @@ impl<K: Ord, V:Clone> NodePtr<K, V> {
         unsafe { (*self.0).side == Side::Right }
     }
 
+    /// checks if this key is deleted
+    pub fn is_deleted(&self) -> bool {
+        unsafe { (*self.0).status == Status::Deleted }
+    }
+
     /// checks if this node is the root node
     pub fn is_root(&self) -> bool {
         unsafe { (*self.0).side == Side::Root }
@@ -231,7 +262,7 @@ impl<K: Ord, V:Clone> PartialEq for NodePtr<K, V> {
 }
 
 pub struct RedBlackTree<K: Ord, V:Clone> {
-    root: NodePtr<K, V>,
+    pub root: NodePtr<K, V>,
     size: u64,
 }
 
@@ -245,14 +276,20 @@ impl<K: Ord, V:Clone> RedBlackTree<K, V> {
     }
     /// It will insert or replace the node in the binary search tree format
     /// In case of no root, it will be the root node
-    pub fn insert_or_replace(&mut self, key: K, value: V) {
+    pub fn insert_or_replace(
+        &mut self, 
+        key: K, 
+        value: V, 
+        timestamp: u128,
+        status: Status
+    ) {
         // find out if the node is there
         // if not, insert it the tree
         // inserted node is always red
         let node = self.find_node(&key);
 
         if node.is_null() {
-            self.insert(key, value);
+            self.insert(key, value,timestamp,status);
             self.size = self.size.add(1);
         }
     }
@@ -288,7 +325,13 @@ impl<K: Ord, V:Clone> RedBlackTree<K, V> {
     /// Safety: use only if you have checked the node is not present in the tree
     /// It insert the node in the right place
     /// Any inserted node is Red in Color
-    fn insert(&mut self, key: K, value: V) {
+    fn insert(
+        &mut self, 
+        key: K, 
+        value: V, 
+        timestamp: u128,
+        status: Status
+    ) {
         // if self.root.0.is_null() {
         //     return NodePtr::null()
         // }
@@ -306,7 +349,7 @@ impl<K: Ord, V:Clone> RedBlackTree<K, V> {
                 current = next;
             }
         }
-        let mut node = NodePtr::new(key, value);
+        let mut node = NodePtr::new(key, value,timestamp,status);
         // root node
         if parent.is_null() {
             self.root = node;
@@ -511,6 +554,35 @@ impl<K: Ord, V:Clone> RedBlackTree<K, V> {
         self.right_rotate(node.right());
         self.left_rotate(node);
     }
+
+    pub fn check_key_deleted(
+        &self,
+        key: &K
+    ) -> bool {
+        let node = self.find_node(key);
+        if node.is_deleted() {
+            return true;
+        }
+        return false;
+    }
+
+    pub fn delete_key(
+        &self,
+        key: &K,
+        timestamp: u128
+    ) {
+        let mut node = self.find_node(key);
+        node.set_deleted(timestamp);
+    }
+
+    pub fn get_value(
+        &self,
+        key: &K
+    ) -> Option<V> {
+        let node = self.find_node(key);
+        
+        return node.get_value();
+    }
 }
 
 
@@ -521,7 +593,7 @@ mod tests {
 
     use crate::engine::mem_table::red_black_tree::red_black_tree::NodePtr;
 
-    use super::RedBlackTree;
+    use super::*;
 
     #[test]
     fn insert_nothing() {
@@ -533,7 +605,7 @@ mod tests {
     #[test]
     fn insert_root() {
         let mut rb = RedBlackTree::<u8,u8>::new();
-        rb.insert_or_replace(11, 16);
+        rb.insert_or_replace(11, 16, 0, Status::Available);
 
         // check tree status
         assert_eq!(rb.size,1);
@@ -558,9 +630,9 @@ mod tests {
     #[test]
     fn insert_root_left_right() {
         let mut rb = RedBlackTree::<u8,u8>::new();
-        rb.insert_or_replace(11, 16);
-        rb.insert_or_replace(14, 19);
-        rb.insert_or_replace(8, 13);
+        rb.insert_or_replace(11, 16,0, Status::Available);
+        rb.insert_or_replace(14, 19,0, Status::Available);
+        rb.insert_or_replace(8, 13,0, Status::Available);
 
         // check tree status
         assert_eq!(rb.size,3);
@@ -612,10 +684,10 @@ mod tests {
     #[test]
     fn check_color_flip() {
         let mut rb = RedBlackTree::<u8,u8>::new();
-        rb.insert_or_replace(11, 16);
-        rb.insert_or_replace(14, 19);
-        rb.insert_or_replace(8, 13);
-        rb.insert_or_replace(7, 12);
+        rb.insert_or_replace(11, 16, 0, Status::Available);
+        rb.insert_or_replace(14, 19, 0, Status::Available);
+        rb.insert_or_replace(8, 13, 0, Status::Available);
+        rb.insert_or_replace(7, 12, 0, Status::Available);
 
         // check tree status
         assert_eq!(rb.size,4);
@@ -677,11 +749,11 @@ mod tests {
     #[test]
     fn check_right_rotate() {
         let mut rb = RedBlackTree::<u8,u8>::new();
-        rb.insert_or_replace(11, 16);
-        rb.insert_or_replace(14, 19);
-        rb.insert_or_replace(8, 13);
-        rb.insert_or_replace(7, 12);
-        rb.insert_or_replace(6, 11);
+        rb.insert_or_replace(11, 16, 0, Status::Available);
+        rb.insert_or_replace(14, 19, 0, Status::Available);
+        rb.insert_or_replace(8, 13, 0, Status::Available);
+        rb.insert_or_replace(7, 12, 0, Status::Available);
+        rb.insert_or_replace(6, 11, 0, Status::Available);
 
         // check tree status
         assert_eq!(rb.size,5);
@@ -741,11 +813,3 @@ mod tests {
         assert_eq!(lr.is_red(),true);
     }
 }
-
-// key: K,
-// value: V,
-// left: NodePtr<K, V>,
-// right: NodePtr<K, V>,
-// parent: NodePtr<K, V>,
-// side: Side,
-// color: Color,
