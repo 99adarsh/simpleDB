@@ -1,13 +1,35 @@
 use super::red_black_tree::red_black_tree::{Color, NodePtr, RedBlackTree, Side, Status};
 use anyhow::Result;
-use std::{fs::{File, OpenOptions}, io::BufWriter, mem::size_of, path::PathBuf};
-// pub struct MemTable<K:Ord,V:Clone> {
-//     pub size: u64,
-//     pub store: RedBlackTree<K,V>
-// }
+use std::{fs::{File, OpenOptions}, io::{BufWriter, Write}, mem::size_of, path::PathBuf};
+use serde::{Serialize,Deserialize};
+
+#[derive(Serialize,Deserialize)]
+pub struct SSTableEntry {
+    pub key: Vec<u8>,
+    pub value: Vec<u8>,
+    pub timestamp: u128
+}
+
+impl SSTableEntry {
+    pub fn new(
+        key: Vec<u8>,
+        value: Vec<u8>,
+        timestamp: u128
+    ) -> Self {
+        Self {
+            key,
+            value,
+            timestamp
+        }
+    }
+}
+#[derive(Serialize,Deserialize)]
+pub struct SSTable(Vec<SSTableEntry>);
+
+#[derive(Debug)]
 pub struct MemTable {
     pub size: usize,
-    pub db_store: RedBlackTree<Vec<u8>, Vec<u8>>,
+    db_store: RedBlackTree<Vec<u8>, Vec<u8>>,
 }
 
 impl MemTable {
@@ -20,7 +42,7 @@ impl MemTable {
 
     pub fn set(&mut self, key: Vec<u8>, value: Vec<u8>, timestamp: u128) -> Result<()> {
         
-        match self.db_store.get_value(&key) {
+        match self.db_store.value(&key) {
             Some(v) => {
                 if value.len() > v.len() {
                     self.size += value.len() - v.len();
@@ -40,6 +62,14 @@ impl MemTable {
         Ok(())
     }
 
+    pub fn get(&self, key: Vec<u8>) -> Option<Vec<u8>> {
+        let node = self.db_store.find_node(&key);
+        if node.is_null() || node.is_deleted() {
+            return None;
+        }
+        return Some(node.value().unwrap());
+    }
+
     pub fn delete(&mut self, key: Vec<u8>, timestamp: u128) -> Result<()> {
 
         if !self.db_store.has_node(&key) {
@@ -57,28 +87,41 @@ impl MemTable {
     /// Flush Memtable in the disk
     /// 
     /// Creates a file in the sstable directory
-    /// Iterate over the RB tree and store the entries in the BufWriter to flush at once in the disk
-    pub fn flush(&self,path: PathBuf, timestamp: u128) -> Result<()> {
+    /// Iterate over RB tree and store the entries in the BufWriter to flush in the disk at once
+    /// Create name using timestamp, will be helpful in compaction
+    pub fn flush(&self,path: &PathBuf, timestamp: u128) -> Result<()> {
         
         let file_name = path.join(timestamp.to_string() + ".sst");
-        let file = OpenOptions::new().create(true).open(file_name)?;
+        // new file must be opened using append or write access
+        let file = OpenOptions::new().append(true).create(true).open(&file_name)?;
+
         // default capacity for bufwriter is 8KB
-        let file = BufWriter::new(file);
+        let mut file = BufWriter::new(file);
 
-        // function in the tree to iterate and store in this bufwriter
-
-
+        let sstable = self.create_sorted_string_table();
+        let encoded_sstable = bincode::serialize(&sstable)?;
+        file.write_all(&encoded_sstable)?;
+        file.flush()?;
 
         Ok(())
     }
 
     // Think about writing format in sstable
-    fn create_sorted_string(&self, file: &mut BufWriter<File>) {
+    fn create_sorted_string_table(&self) -> Vec<SSTableEntry> {
         let mut iter = self.db_store.root.into_iter();
-
-        // while let Some(x) = iter.next() {
-
-        // }
+        let mut sstable = vec![];
+        while let Some(node) = iter.next() {
+            if node.key().is_none() || node.value().is_none() || node.timestamp().is_none() {
+                panic!("Node key/value/timestamp is none");
+            }
+            let sstable_entry = SSTableEntry::new(
+                node.key().unwrap(),
+                node.value().unwrap(),
+                node.timestamp().unwrap()
+            );
+            sstable.push(sstable_entry);
+        }
+        sstable
     }
 
     // pub fn get(&self, key: &Vec<u8>) -> Option<Vec<u8>> {

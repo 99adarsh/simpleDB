@@ -1,5 +1,5 @@
 [package]
-name = "lsm-database-engine"
+name = "simpleDB"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.79"
+bincode = "1.3.3"
+serde = {version = "1.0.196", features = ["derive"]}

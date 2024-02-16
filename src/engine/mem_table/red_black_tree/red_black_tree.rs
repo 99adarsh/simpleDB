@@ -30,7 +30,7 @@ pub enum Status {
 /// the key must implement Ord trait(provides min,max.. methods)
 /// A pointer to the node can be created using `NodePtr::new()` method
 #[allow(dead_code)]
-pub struct Node<K: Ord, V: Clone> {
+pub struct Node<K: Ord + Clone, V: Clone> {
     key: K,
     value: V,
     timestamp: u128,
@@ -49,9 +49,9 @@ pub struct Node<K: Ord, V: Clone> {
 // We will use unsafe rust and a node store the  pointer to the left ,right and  parent node
 /// NodePtr is the abstraction over the pointer to the node
 #[derive(Debug)]
-pub struct NodePtr<K: Ord, V:Clone>(*mut Node<K, V>);
+pub struct NodePtr<K: Ord + Clone, V:Clone>(*mut Node<K, V>);
 
-impl<K: Ord, V:Clone> NodePtr<K, V> {
+impl<K: Ord + Clone, V:Clone> NodePtr<K, V> {
     /// It allcoates a new node in the heap
     /// And saves the raw pointer to the node in the Node Pointer
     pub fn new(key: K, value: V, timestamp: u128,status: Status) -> Self {
@@ -169,12 +169,26 @@ impl<K: Ord, V:Clone> NodePtr<K, V> {
     }
 
     /// returns the value stored inside the node
-    #[allow(unused)]
-    pub fn get_value(&self) -> Option<V> {
+    // #[allow(unused)]
+    pub fn value(&self) -> Option<V> {
         if self.is_null() {
             return None;
         }
         unsafe { Some((*self.0).value.clone()) }
+    }
+    #[allow(unused)]
+    pub fn key(&self) -> Option<K> {
+        if self.is_null() {
+            return None;
+        }
+        unsafe { Some((*self.0).key.clone()) }
+    }
+    #[allow(unused)]
+    pub fn timestamp(&self) -> Option<u128> {
+        if self.is_null() {
+            return None;
+        }
+        unsafe { Some((*self.0).timestamp) }
     }
 
     /// checks if this node's color is red
@@ -232,41 +246,42 @@ impl<K: Ord, V:Clone> NodePtr<K, V> {
     }
 }
 
-impl<K: Ord, V:Clone> Clone for NodePtr<K, V> {
+impl<K: Ord + Clone, V:Clone> Clone for NodePtr<K, V> {
     fn clone(&self) -> NodePtr<K, V> {
         NodePtr(self.0)
     }
 }
-impl<K: Ord, V:Clone> Copy for NodePtr<K, V> {}
+impl<K: Ord + Clone, V:Clone> Copy for NodePtr<K, V> {}
 
 /// To implement Ord trait one must implement PartialOrd and Eq
 /// Implementations must be consistent with the PartialOrd
-impl<K: Ord, V:Clone> Ord for NodePtr<K, V> {
+impl<K: Ord + Clone, V:Clone> Ord for NodePtr<K, V> {
     fn cmp(&self, other: &NodePtr<K, V>) -> Ordering {
         unsafe { (*self.0).key.cmp(&(*other.0).key) }
     }
 }
 
-impl<K: Ord, V:Clone> PartialOrd for NodePtr<K, V> {
+impl<K: Ord + Clone, V:Clone> PartialOrd for NodePtr<K, V> {
     fn partial_cmp(&self, other: &NodePtr<K, V>) -> Option<Ordering> {
         unsafe { Some((*self.0).key.cmp(&(*other.0).key)) }
     }
 }
 /// To impelement Eq trait, typw must implement PartialEq
-impl<K: Ord, V:Clone> Eq for NodePtr<K, V> {}
+impl<K: Ord + Clone, V:Clone> Eq for NodePtr<K, V> {}
 
-impl<K: Ord, V:Clone> PartialEq for NodePtr<K, V> {
+impl<K: Ord + Clone, V:Clone> PartialEq for NodePtr<K, V> {
     fn eq(&self, other: &NodePtr<K, V>) -> bool {
         self.0 == other.0
     }
 }
 
-pub struct RedBlackTree<K: Ord, V:Clone> {
+#[derive(Debug)]
+pub struct RedBlackTree<K: Ord + Clone, V:Clone> {
     pub root: NodePtr<K, V>,
     size: u64,
 }
 
-impl<K: Ord, V:Clone> RedBlackTree<K, V> {
+impl<K: Ord + Clone, V:Clone> RedBlackTree<K, V> {
     /// It creates a new Red-Black tree
     pub fn new() -> Self {
         Self {
@@ -295,7 +310,7 @@ impl<K: Ord, V:Clone> RedBlackTree<K, V> {
     }
     /// It traverses the tree and return the pointer to the node
     /// if found else return the null Nodeptr
-    fn find_node(&self, key: &K) -> NodePtr<K, V> {
+    pub fn find_node(&self, key: &K) -> NodePtr<K, V> {
         if self.root.0.is_null() {
             return NodePtr::null();
         }
@@ -575,13 +590,13 @@ impl<K: Ord, V:Clone> RedBlackTree<K, V> {
         node.set_deleted(timestamp);
     }
 
-    pub fn get_value(
+    pub fn value(
         &self,
         key: &K
     ) -> Option<V> {
         let node = self.find_node(key);
         
-        return node.get_value();
+        return node.value();
     }
 }
 
@@ -614,7 +629,7 @@ mod tests {
 
         // check root node status, all types in node
         let x = rb.find_node(&11);
-        assert_eq!(x.get_value(),Some(16));
+        assert_eq!(x.value(),Some(16));
         assert_eq!(x.left().is_null(), true);
         assert_eq!(x.right().is_null(), true);
         assert_eq!(x.get_parent().is_null(), true);
@@ -643,7 +658,7 @@ mod tests {
         let x = rb.find_node(&11);
         let y = rb.find_node(&8);
         let z = rb.find_node(&14);
-        assert_eq!(x.get_value(),Some(16));
+        assert_eq!(x.value(),Some(16));
         assert_eq!(x.left(),y);
         assert_eq!(x.right(),z);
         assert_eq!(x.get_parent().is_null(), true);
@@ -651,7 +666,7 @@ mod tests {
         assert_eq!(x.is_black(),true);
 
         // check left node status, all types in node
-        assert_eq!(y.get_value(),Some(13));
+        assert_eq!(y.value(),Some(13));
         assert_eq!(y.left().is_null(),true);
         assert_eq!(y.right().is_null(),true);
         assert_eq!(y.get_parent(), x);
@@ -659,7 +674,7 @@ mod tests {
         assert_eq!(y.is_red(),true);
 
         // check right node status, all types in node
-        assert_eq!(z.get_value(),Some(19));
+        assert_eq!(z.value(),Some(19));
         assert_eq!(z.left().is_null(),true);
         assert_eq!(z.right().is_null(),true);
         assert_eq!(z.get_parent(), x);
@@ -700,7 +715,7 @@ mod tests {
         let z = rb.find_node(&14);
         let w = rb.find_node(&7);
         
-        assert_eq!(x.get_value(),Some(16));
+        assert_eq!(x.value(),Some(16));
         assert_eq!(x.left(),y);
         assert_eq!(x.right(),z);
         assert_eq!(x.get_parent().is_null(), true);
@@ -708,7 +723,7 @@ mod tests {
         assert_eq!(x.is_black(),true);
 
         // check left node status
-        assert_eq!(y.get_value(),Some(13));
+        assert_eq!(y.value(),Some(13));
         assert_eq!(y.left(),w);
         assert_eq!(y.right().is_null(),true);
         assert_eq!(y.get_parent(), x);
@@ -716,7 +731,7 @@ mod tests {
         assert_eq!(y.is_black(),true);
 
         // check right node status
-        assert_eq!(z.get_value(),Some(19));
+        assert_eq!(z.value(),Some(19));
         assert_eq!(z.left().is_null(),true);
         assert_eq!(z.right().is_null(),true);
         assert_eq!(z.get_parent(), x);
@@ -724,7 +739,7 @@ mod tests {
         assert_eq!(z.is_black(),true);
 
         // check new inserted node status
-        assert_eq!(w.get_value(),Some(12));
+        assert_eq!(w.value(),Some(12));
         assert_eq!(w.left().is_null(),true);
         assert_eq!(w.right().is_null(),true);
         assert_eq!(w.get_parent(), y);
@@ -773,7 +788,7 @@ mod tests {
         assert_eq!(rb.has_node(&6),true);
         assert_eq!(rb.has_node(&8),true);
         
-        assert_eq!(root.get_value(),Some(16));
+        assert_eq!(root.value(),Some(16));
         assert_eq!(root.left(),l);
         assert_eq!(root.right(),r);
         assert_eq!(root.get_parent().is_null(), true);
@@ -781,7 +796,7 @@ mod tests {
         assert_eq!(root.is_black(),true);
 
         // check left node status
-        assert_eq!(l.get_value(),Some(12));
+        assert_eq!(l.value(),Some(12));
         assert_eq!(l.left(),ll);
         assert_eq!(l.right(),lr);
         assert_eq!(l.get_parent(), root);
@@ -789,7 +804,7 @@ mod tests {
         assert_eq!(l.is_black(),true);
 
         // // check right node status
-        assert_eq!(r.get_value(),Some(19));
+        assert_eq!(r.value(),Some(19));
         assert_eq!(r.left().is_null(),true);
         assert_eq!(r.right().is_null(),true);
         assert_eq!(r.get_parent(), root);
@@ -797,7 +812,7 @@ mod tests {
         assert_eq!(r.is_black(),true);
 
         // // check new inserted node status
-        assert_eq!(ll.get_value(),Some(11));
+        assert_eq!(ll.value(),Some(11));
         assert_eq!(ll.left().is_null(),true);
         assert_eq!(ll.right().is_null(),true);
         assert_eq!(ll.get_parent(), l);
@@ -805,7 +820,7 @@ mod tests {
         assert_eq!(ll.is_red(),true);
 
         // check parent which get pulled in the right side
-        assert_eq!(lr.get_value(),Some(13));
+        assert_eq!(lr.value(),Some(13));
         assert_eq!(lr.left().is_null(),true);
         assert_eq!(lr.right().is_null(),true);
         assert_eq!(lr.get_parent(), l);
