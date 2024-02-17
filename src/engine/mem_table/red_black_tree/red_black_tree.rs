@@ -176,6 +176,22 @@ impl<K: Ord + Clone, V:Clone> NodePtr<K, V> {
         }
         unsafe { Some((*self.0).value.clone()) }
     }
+    pub fn set_value(&mut self,v: V) {
+        if self.is_null() {
+            return;
+        }
+        unsafe { (*self.0).value = v }
+    }
+
+    fn set_status(&mut self, status: Status) {
+        if self.is_null() {
+            return;
+        }
+        unsafe {
+            (*self.0).status = status;
+        }
+    }
+
     #[allow(unused)]
     pub fn key(&self) -> Option<K> {
         if self.is_null() {
@@ -183,6 +199,7 @@ impl<K: Ord + Clone, V:Clone> NodePtr<K, V> {
         }
         unsafe { Some((*self.0).key.clone()) }
     }
+
     #[allow(unused)]
     pub fn timestamp(&self) -> Option<u128> {
         if self.is_null() {
@@ -191,13 +208,26 @@ impl<K: Ord + Clone, V:Clone> NodePtr<K, V> {
         unsafe { Some((*self.0).timestamp) }
     }
 
+    pub fn set_timestamp(&mut self,timestamp: u128){
+        if self.is_null() {
+            return;
+        }
+        unsafe { (*self.0).timestamp = timestamp }
+    }
+
     /// checks if this node's color is red
     pub fn is_red(&self) -> bool {
+        if self.is_null() {
+            return false;
+        }
         unsafe { (*self.0).color == Color::Red }
     }
 
     /// checks if this node's color is black
     pub fn is_black(&self) -> bool {
+        if self.is_null() {
+            return true;
+        }
         unsafe { (*self.0).color == Color::Black }
     }
 
@@ -301,12 +331,16 @@ impl<K: Ord + Clone, V:Clone> RedBlackTree<K, V> {
         // find out if the node is there
         // if not, insert it the tree
         // inserted node is always red
-        let node = self.find_node(&key);
-
+        let mut node = self.find_node(&key);
         if node.is_null() {
             self.insert(key, value,timestamp,status);
             self.size = self.size.add(1);
+        } else {
+            node.set_value(value);
+            node.set_timestamp(timestamp);
+            node.set_status(status);
         }
+        // TODO: Add else if node is not present
     }
     /// It traverses the tree and return the pointer to the node
     /// if found else return the null Nodeptr
@@ -354,6 +388,7 @@ impl<K: Ord + Clone, V:Clone> RedBlackTree<K, V> {
         let mut parent: NodePtr<K, V> = NodePtr::null();
 
         while !current.is_null() {
+    
             unsafe {
                 let curr_key = &(*current.0).key;
                 let next = match key.cmp(curr_key) {
@@ -364,6 +399,7 @@ impl<K: Ord + Clone, V:Clone> RedBlackTree<K, V> {
                 current = next;
             }
         }
+
         let mut node = NodePtr::new(key, value,timestamp,status);
         // root node
         if parent.is_null() {
@@ -371,23 +407,32 @@ impl<K: Ord + Clone, V:Clone> RedBlackTree<K, V> {
             node.set_color_black();     // because root is black
             node.set_side_root();
         } else {
+    
             node.set_parent(parent);
+    
             node.set_color_red();
+    
 
             match node.cmp(&parent) {
                 Ordering::Less => {
+            
                     parent.set_left_child(node);
+            
                     node.set_side_left();
                 }
                 _ => {
+            
                     parent.set_right_child(node);
+            
                     node.set_side_right();
+            
                 }
             }
         }
 
         // By now, a node has been set up
         // and now its time to check the Properties of RedBlack tree and make the required change
+
         self.check_color(node);
 
         return;
@@ -397,18 +442,22 @@ impl<K: Ord + Clone, V:Clone> RedBlackTree<K, V> {
     /// In case of violation it fixes the tree then moves up to check further violations
     fn check_color(&mut self, node: NodePtr<K, V>) {
         if node == self.root {
+    
             return;
         }
         // it is a violation
         if node.is_red() && node.get_parent().is_red() {
+    
             self.correct_tree(node);
+    
             self.check_color(node.get_parent());
+    
         }
     }
 
     /// There are two methods of correcting the tree
     /// First is, if the aunt is  black then perform ROTATION
-    /// After Rotation, GrandParent is Black and parent and aunt is red
+    /// After Rotation, Parent is Black and us and sibbling is red
     /// Second is, if the aunt is Red then we perform the colorflip
     /// After COLORFLIP, GrandParent is Red and parent and aunt is black
     /// GrandParent is aways there, or there is no disbalace is that area
@@ -444,10 +493,10 @@ impl<K: Ord + Clone, V:Clone> RedBlackTree<K, V> {
             }
 
             // else aunt is red, do color flip
-            node.get_parent().get_parent().set_color_black();
-            if !node.get_parent().is_root() {
-                node.get_parent().get_parent().set_color_red();             // Only if not root node,
+            if !node.get_parent().get_parent().is_root() {
+                node.get_parent().get_parent().set_color_black();
             }
+            node.get_parent().set_color_black();             // Only if not root node,
 
             if !node.get_parent().get_parent().left().is_null() {
                 node.get_parent().get_parent().left().set_color_black()
@@ -826,5 +875,51 @@ mod tests {
         assert_eq!(lr.get_parent(), l);
         assert_eq!(lr.is_right(),true);
         assert_eq!(lr.is_red(),true);
+    }
+
+    #[test]
+    fn increasing_insertions(){
+        let mut rb = RedBlackTree::<u8,u8>::new();
+        for i in 1..60 {
+            rb.insert_or_replace(i, i, 0, Status::Available);
+        }
+
+        let mut iter = rb.root.into_iter();
+        for i in 1..60 {
+            assert_eq!(Some(i),iter.next().unwrap().value());
+        }
+        assert_eq!(None,iter.next());
+    }
+    #[test]
+    fn decreasing_insertions(){
+        let mut rb = RedBlackTree::<u8,u8>::new();
+        for i in (1..60).rev(){
+            rb.insert_or_replace(i, i, 0, Status::Available);
+        }
+
+        let mut iter = rb.root.into_iter();
+        for i in 1..60 {
+            assert_eq!(Some(i),iter.next().unwrap().value());
+        }
+        assert_eq!(None,iter.next());
+    }
+
+    #[test]
+    fn reset_same_key(){
+        let mut rb = RedBlackTree::<u8,u8>::new();
+        for i in 1..60 {
+    
+            rb.insert_or_replace(i, i, 0, Status::Available);
+        }
+        
+        let mut iter = rb.root.into_iter();
+        for i in 1..60 {
+            rb.insert_or_replace(i, i+5, 0, Status::Available);
+        }
+
+        for i in 1..60 {
+            assert_eq!(Some(i+5),iter.next().unwrap().value());
+        }
+        assert_eq!(None,iter.next());
     }
 }

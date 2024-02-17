@@ -70,14 +70,13 @@ mod tests {
     #[test]
     fn test_flow() {
         let mut engine = Engine::new(
-            "/home/adarsh/my_files/personal/lsm-database-engine".to_owned(), 
-            10
+            "/home/adarsh/my_files/personal/lsm-database-engine/sstable".to_owned(), 
+            1024
         ).unwrap();
-        println!("{}","hello".as_bytes().to_vec().len() + "world".as_bytes().to_vec().len());
         
-        for i in 1.. {
+        for i in 1..60 {
             println!("Iteration {}",i);
-            engine.set("hello".as_bytes().to_vec(), "world".as_bytes().to_vec()).unwrap();
+            engine.set(i.to_string().as_bytes().to_vec(), (i+1).to_string().as_bytes().to_vec()).unwrap();
         }
     }
 }
